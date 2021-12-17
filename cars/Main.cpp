@@ -14,6 +14,64 @@ float dotProductVectors2f(sf::Vector2f v1, sf::Vector2f v2) { return v1.x * v2.x
 float angleVect(sf::Vector2f v) { if (v.x == 0) { return 3.141592 / 2 * abs(v.y) / v.y; }; if (v.y == 0) { return 3.141592 * abs(v.x) / v.x; }; return atan2(v.y, v.x); }
 sf::Vector2f vectAngle(float a) { return sf::Vector2f(cos(a), sin(a)); }
 
+
+void write(sf::RenderWindow& window, std::string t1, sf::IntRect rect, sf::Color col) {
+	//load font
+	sf::Font font;
+	font.loadFromFile("../fonts/BalooPaaji2.ttf");
+
+	//create the text element
+	sf::Text text(t1, font);
+	text.setStyle(sf::Text::Bold);
+	text.setFillColor(col);
+
+	text.setCharacterSize(rect.height);
+
+	text.setPosition(sf::Vector2f(rect.left, rect.top));
+
+	window.draw(text);
+}
+
+
+sf::Color HSVtoRGB(float H, float S, float V) {   // h:0-360.0, s:0.0-1.0, v:0.0-1.0
+	S *= 100; V *= 100;
+	if (H > 360 || H < 0 || S>100 || S < 0 || V>100 || V < 0) {
+		std::cout << "The given HSV values are not in valid range" << "\n";
+		return sf::Color(0, 0, 0);
+	}
+	float s = S / 100;
+	float v = V / 100;
+	float C = s * v;
+	float X = C * (1 - abs(fmod(H / 60.0, 2) - 1));
+	float m = v - C;
+	float r, g, b;
+	if (H >= 0 && H < 60) {
+		r = C, g = X, b = 0;
+	}
+	else if (H >= 60 && H < 120) {
+		r = X, g = C, b = 0;
+	}
+	else if (H >= 120 && H < 180) {
+		r = 0, g = C, b = X;
+	}
+	else if (H >= 180 && H < 240) {
+		r = 0, g = X, b = C;
+	}
+	else if (H >= 240 && H < 300) {
+		r = X, g = 0, b = C;
+	}
+	else {
+		r = C, g = 0, b = X;
+	}
+	int R = (r + m) * 255;
+	int G = (g + m) * 255;
+	int B = (b + m) * 255;
+
+	return sf::Color(R, G, B);
+}
+
+
+
 class Layer {
 public:
 	int size;
@@ -144,7 +202,8 @@ bool pointInRect(sf::Vector2f& p1, Checkpoint& c) {
 class Car {
 public:
 	sf::Vector2f position;
-	float speed;
+	sf::Vector2f speedVect;
+	float maxspeed;
 	sf::Vector2f orientation;
 
 	sf::Vector2f size;
@@ -173,10 +232,11 @@ void Car::init(sf::Vector2f pos, sf::Vector2f ori) {
 
 	position = pos;
 	orientation = ori;
-	speed = 4;
+	speedVect = sf::Vector2f(0, 0);
+	maxspeed = 1;
 	life = maxlife;
 
-	rect.setFillColor(sf::Color(100 + rand() % 100, 100 + rand() % 100, 100 + rand() % 100));
+	rect.setFillColor(HSVtoRGB(rand()% 360, 1, 1));
 	size = sf::Vector2f(30, 10);
 	rect.setSize(size);
 	rect.setOrigin(sf::Vector2f(15, 5));
@@ -184,8 +244,8 @@ void Car::init(sf::Vector2f pos, sf::Vector2f ori) {
 	rect.setRotation(3.141592 / 2);
 
 	Layer l1, l2, l3, l4, l5;
-	l1.init(8, 0);
-	l2.init(5, 8);
+	l1.init(10, 0);
+	l2.init(5, 10);
 	l3.init(5, 5);
 	l4.init(3, 5);
 	l5.init(2, 3);
@@ -194,10 +254,10 @@ void Car::init(sf::Vector2f pos, sf::Vector2f ori) {
 	l3.randomize();
 	l4.randomize();
 	l5.randomize();
-	NN.layers.push_back(l1); 
-	NN.layers.push_back(l2); 
-	NN.layers.push_back(l3); 
-	NN.layers.push_back(l4); 
+	NN.layers.push_back(l1);
+	NN.layers.push_back(l2);
+	NN.layers.push_back(l3);
+	NN.layers.push_back(l4);
 	NN.layers.push_back(l5);
 }
 
@@ -209,13 +269,15 @@ float Car::distWall(float angle, sf::Image& Img) {
 	sf::Vector2f vect = sf::Vector2f(cos(a), sin(a));
 	float dist = 5;
 	bool test = false;
-	
+
 	while (dist < viewDist and !test) {
 		dist *= 1.5;
 		tp.x = vect.x * dist + position.x;
 		tp.y = vect.y * dist + position.y;
-		test = Img.getPixel(fmax(0, fmin(tp.x, 1919)), fmax(0, fmin(tp.y, 1079))) == sf::Color(0,0,0);
+		test = Img.getPixel(fmax(0, fmin(tp.x, 1919)), fmax(0, fmin(tp.y, 1079))) == sf::Color(0, 0, 0);
 	}
+
+
 
 	return dist;
 }
@@ -225,26 +287,31 @@ void Car::update(sf::Image& Img, std::vector<Checkpoint>& checkpoints) {
 	isdead = isdead or (life <= 0);
 
 	if (!isdead) {
-		NN.layers[0].values[0] = distWall(-3.141592/3, Img);
-		NN.layers[0].values[1] = distWall(-3.141592/4, Img);
-		NN.layers[0].values[2] = distWall(-3.141592/6, Img);
+		NN.layers[0].values[0] = distWall(-3.141592 / 3, Img);
+		NN.layers[0].values[1] = distWall(-3.141592 / 4, Img);
+		NN.layers[0].values[2] = distWall(-3.141592 / 6, Img);
 		NN.layers[0].values[3] = distWall(0, Img);
-		NN.layers[0].values[4] = distWall(3.141592/6, Img);
-		NN.layers[0].values[5] = distWall(3.141592/4, Img);
-		NN.layers[0].values[6] = distWall(3.141592/3, Img);
-		NN.layers[0].values[7] = angleVect(orientation)/10;
+		NN.layers[0].values[4] = distWall(3.141592 / 6, Img);
+		NN.layers[0].values[5] = distWall(3.141592 / 4, Img);
+		NN.layers[0].values[6] = distWall(3.141592 / 3, Img);
+		NN.layers[0].values[7] = angleVect(orientation) / 10;
+		NN.layers[0].values[8] = speedVect.x / 5;
+		NN.layers[0].values[9] = speedVect.y / 5;
 
 		Layer ans = runNN(NN);
 
 		//add 0.1 to speed so the cars can't stay at the same place
-		float speedC = (0.1 + abs(ans.values[0]) * speed);
+		float speedC = (0.1 + abs(ans.values[0])/2);
 
-		float angle = ans.values[1]/10; //turn angle
+		float angle = ans.values[1] / 10; //turn angle
 		orientation = vectAngle(angleVect(orientation) + angle);
-		
 
-		position.x += speedC * orientation.x;
-		position.y += speedC * orientation.y;
+		speedVect.x += speedC * orientation.x * maxspeed;
+		speedVect.y += speedC * orientation.y * maxspeed;
+
+		speedVect.x *= 0.9; speedVect.y *= 0.9;
+
+		position = addVectors2f(position, speedVect);
 
 		//test collision
 		sf::Vector2f v1 = orientation;
@@ -259,37 +326,36 @@ void Car::update(sf::Image& Img, std::vector<Checkpoint>& checkpoints) {
 		// both front angles
 		p1 = addVectors2f(addVectors2f(position, v1), v2);
 		col = Img.getPixel(fmax(0, fmin(p1.x, 1920)), fmax(0, fmin(p1.y, 1080)));
-		if (col == sf::Color(0, 0, 0)) isdead = true;
+		if (col == sf::Color(0, 0, 0)) { isdead = true; score += (maxlife - life)/2; }
 
 		p2 = subVectors2f(addVectors2f(position, v1), v2);
 		col = Img.getPixel(fmax(0, fmin(p2.x, 1920)), fmax(0, fmin(p2.y, 1080)));
-		if (col == sf::Color(0, 0, 0)) isdead = true;
+		if (col == sf::Color(0, 0, 0)) { isdead = true; score += (maxlife - life)/2; }
 
 		/* // back angles, if the car can go backward
 		p = addVectors2f(subVectors2f(position, v1), v2);
 		col = Img.getPixel(fmax(0, fmin(p.x, 1920)), fmax(0, fmin(p.y, 1080)));
-		if (col == sf::Color(0, 0, 0)) isdead = true;
-
-
+		if (col == sf::Color(0, 0, 0)) { isdead = true; score += (maxlife - life)/2; }
 		p = subVectors2f(subVectors2f(position, v1), v2);
 		col = Img.getPixel(fmax(0, fmin(p.x, 1920)), fmax(0, fmin(p.y, 1080)));
-		if (col == sf::Color(0, 0, 0)) isdead = true;
+		if (col == sf::Color(0, 0, 0)) { isdead = true; score += (maxlife - life)/2; }
 		*/
 
 		if (lastCheckpoint < checkpoints.size()) {
 			if (pointInRect(p1, checkpoints[lastCheckpoint]) or pointInRect(p2, checkpoints[lastCheckpoint])) {
+				score += life;
 				life = maxlife;
 				lastCheckpoint += 1;
-				score += 100 / life;
-				if (lastCheckpoint == checkpoints.size()) { 
-					isdead = true; 
+				if (lastCheckpoint == checkpoints.size()) {
+					isdead = true;
 				}
 			}
 		}
 
-		life -= !isdead * speed / 10;
+		life -= !isdead * maxspeed / 3;
 	}
 }
+
 
 
 void Car::draw(sf::RenderWindow& window) {
@@ -312,6 +378,7 @@ void saveBestCar(std::vector<Car>& cars, Car& BestCar) {
 	}
 
 	BestCar.NN = cars[indexMax].NN;
+	BestCar.score = cars[indexMax].score;
 }
 
 
@@ -359,20 +426,59 @@ void drawCheckpoints(std::vector<Checkpoint>& checkpoints, sf::RenderWindow& win
 	}
 }
 
+void initCheckpoints(std::vector<Checkpoint>& checkpoints, int num) {
+	checkpoints.clear();
+	Checkpoint ch;
+	if (num == 1) {
+		ch.init(sf::Vector2f(400, 230), sf::Vector2f(200, 15), 3.141592 / 4, 1);
+		checkpoints.push_back(ch);
+		ch.init(sf::Vector2f(980, 260), sf::Vector2f(210, 15), 3.141592 / 1.9, 2);
+		checkpoints.push_back(ch);
+		ch.init(sf::Vector2f(1550, 375), sf::Vector2f(300, 15), 3.141592 / -4, 3);
+		checkpoints.push_back(ch);
+		ch.init(sf::Vector2f(1521, 800), sf::Vector2f(300, 15), 0.1, 4);
+		checkpoints.push_back(ch);
+		ch.init(sf::Vector2f(990, 890), sf::Vector2f(200, 15), 3.141592 / 2, 5);
+		checkpoints.push_back(ch);
+		ch.init(sf::Vector2f(440, 870), sf::Vector2f(200, 15), -3.141592 / 4, 6);
+		checkpoints.push_back(ch);
+		ch.init(sf::Vector2f(405, 575), sf::Vector2f(120, 40), -0.1, 7);
+		checkpoints.push_back(ch);
+	}
+	else {
+		//map2.png
+		ch.init(sf::Vector2f(400, 230), sf::Vector2f(200, 15), 3.141592 / 4, 1);
+		checkpoints.push_back(ch);
+		ch.init(sf::Vector2f(1083, 189), sf::Vector2f(210, 15), 3.141592 / 1.9, 2);
+		checkpoints.push_back(ch);
+		ch.init(sf::Vector2f(1600, 375), sf::Vector2f(470, 15), 3.141592 / -4, 3);
+		checkpoints.push_back(ch);
+		ch.init(sf::Vector2f(1571, 910), sf::Vector2f(135, 15), 0.1, 4);
+		checkpoints.push_back(ch);
+		ch.init(sf::Vector2f(980, 800), sf::Vector2f(120, 15), 3.141592 / 2, 5);
+		checkpoints.push_back(ch);
+		ch.init(sf::Vector2f(400, 875), sf::Vector2f(170, 15), -3.141592 / 4, 6);
+		checkpoints.push_back(ch);
+		ch.init(sf::Vector2f(410, 555), sf::Vector2f(120, 30), -0.15, 7);
+		checkpoints.push_back(ch);
+	}
+}
+
 
 
 
 int main() {
-	const float EVOLUTION = 10;
+	const float EVOLUTION = 5; //avg prcnt change of each generation
+	const bool CHANGEMAP = true;
 
 	std::srand(std::time(nullptr));
 
 	int windowWidth = 1920;
 	int windowHeight = 1080;
 
-	sf::RenderWindow window(sf::VideoMode(windowWidth, windowHeight), "Name");
+	sf::RenderWindow window(sf::VideoMode(windowWidth, windowHeight), "Name", sf::Style::Fullscreen);
 	sf::Texture mapTxt;
-	if (!mapTxt.loadFromFile("../img/map1.png")) return -1;
+	if (!mapTxt.loadFromFile("../img/map1Texture.png")) return -1;
 	sf::Image mapImg;
 	if (!mapImg.loadFromFile("../img/map1.png")) return -1;
 	sf::RectangleShape Map;
@@ -386,49 +492,24 @@ int main() {
 	Car BestCar;
 	BestCar.init(sf::Vector2f(400, 500), sf::Vector2f(0, -1));
 
-	for (int i = 0; i < 1000; i++) {
+	for (int i = 0; i < 5000; i++) {
 		Car c;
 		c.init(sf::Vector2f(400, 500), sf::Vector2f(0, -1));
 		cars.push_back(c);
 	}
 
 	std::vector<Checkpoint> checkpoints;
-	Checkpoint ch;
-	//map1.png
-	ch.init(sf::Vector2f(400, 230), sf::Vector2f(200, 15), 3.141592 / 4, 1);
-	checkpoints.push_back(ch);
-	ch.init(sf::Vector2f(980, 260), sf::Vector2f(210, 15), 3.141592 / 1.9, 2);
-	checkpoints.push_back(ch);
-	ch.init(sf::Vector2f(1550, 375), sf::Vector2f(300, 15), 3.141592 / -4, 3);
-	checkpoints.push_back(ch);
-	ch.init(sf::Vector2f(1521, 800), sf::Vector2f(300, 15), 0.1, 4);
-	checkpoints.push_back(ch);
-	ch.init(sf::Vector2f(990, 890), sf::Vector2f(200, 15), 3.141592 / 2, 5);
-	checkpoints.push_back(ch);
-	ch.init(sf::Vector2f(440, 870), sf::Vector2f(200, 15), -3.141592 / 4, 6);
-	checkpoints.push_back(ch);
-	ch.init(sf::Vector2f(405, 575), sf::Vector2f(120, 40), -0.1, 7);
-	checkpoints.push_back(ch);
+	initCheckpoints(checkpoints, 1);
 
-	/* //map2.png
-	ch.init(sf::Vector2f(400, 230), sf::Vector2f(200, 15), 3.141592/4, 1);
-	checkpoints.push_back(ch);
-	ch.init(sf::Vector2f(1083, 189), sf::Vector2f(210, 15), 3.141592 / 1.9, 2);
-	checkpoints.push_back(ch);
-	ch.init(sf::Vector2f(1600, 375), sf::Vector2f(470, 15), 3.141592/-4, 3);
-	checkpoints.push_back(ch);
-	ch.init(sf::Vector2f(1571, 910), sf::Vector2f(135, 15), 0.1, 4);
-	checkpoints.push_back(ch);
-	ch.init(sf::Vector2f(980, 800), sf::Vector2f(120, 15), 3.141592 / 2, 5);
-	checkpoints.push_back(ch);
-	ch.init(sf::Vector2f(400, 875), sf::Vector2f(170, 15), -3.141592/4, 6);
-	checkpoints.push_back(ch);
-	ch.init(sf::Vector2f(410, 555), sf::Vector2f(120, 30), -0.15, 7);
-	checkpoints.push_back(ch);
-	*/
 
+	//texts rect
+	sf::IntRect genRect;
+	genRect.top = 7; genRect.left = 20; genRect.height = 40; genRect.width = 240;
+	sf::IntRect scoreRect = genRect;
+	scoreRect.top += scoreRect.height * 1;
 
 	int generation = 0;
+	std::cout << "Generation n°: " << generation << '\n';
 	bool endOfGeneration = false;
 
 	while (window.isOpen()) {
@@ -440,8 +521,19 @@ int main() {
 				evolveNN(cars[i].NN, EVOLUTION);
 			}
 			generation++;
-			std::cout << "Generation nÂ°: " << generation << '\n';
+			std::cout << "Generation n°: " << generation << "Best score: "<< BestCar.score << '\n';
 			endOfGeneration = false;
+
+			if (CHANGEMAP) {
+				std::string adress = "../img/map";
+				adress += std::to_string(generation % 2 + 1);
+
+				if (!mapTxt.loadFromFile(adress+"Texture.png")) return -1;
+				if (!mapImg.loadFromFile(adress+".png")) return -1;
+				initCheckpoints(checkpoints, generation % 2 + 1);
+
+				Map.setTexture(&mapTxt);
+			}
 		}
 
 
@@ -456,7 +548,9 @@ int main() {
 		window.clear();
 		window.draw(Map);
 		drawCars(cars, window);
-		drawCheckpoints(checkpoints, window);
+		//drawCheckpoints(checkpoints, window);
+		write(window, "Generation n°"+std::to_string(generation), genRect, sf::Color::Black);
+		if(BestCar.score > 0)	write(window, "Previous best: " + std::to_string((int)(BestCar.score*3.14159)), scoreRect, sf::Color::Black); //don't display the true score because it's not precise enough when rounded
 
 		tup.join();
 		window.display();
