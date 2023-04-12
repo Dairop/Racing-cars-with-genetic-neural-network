@@ -42,7 +42,7 @@ sf::Color HSVtoRGB(float H, float S, float V) {   // h:0-360.0, s:0.0-1.0, v:0.0
 	float s = S / 100;
 	float v = V / 100;
 	float C = s * v;
-	float X = C * (1 - abs(fmod(H / 60.0, 2) - 1));
+	float X = C * (1 - fabs(fmod(H / 60.0, 2) - 1));
 	float m = v - C;
 	float r, g, b;
 	if (H >= 0 && H < 60) {
@@ -577,7 +577,7 @@ int main() {
 
 	while (window.isOpen()) {
 		if (endOfGeneration) {
-			std::cout << "Generation n°: " << generation << "Best score: " << BestCarsVect[0].score << '\n';
+			std::cout << "Generation nÂ°: " << generation << "Best score: " << BestCarsVect[0].score << '\n';
 			generation++;
 			if (CHANGEMAP) {
 				mapn = generation % 3 + 1;
@@ -624,7 +624,7 @@ int main() {
 		drawCars(cars, window);
 		window.draw(whiteRect);
 		if (SHOWCHECKPOINTS) drawCheckpoints(checkpoints, window);
-		write(window, "Generation n°"+std::to_string(generation), sf::Vector3f(10, 10, 40), sf::Color::Black);
+		write(window, "Generation nÂ°"+std::to_string(generation), sf::Vector3f(10, 10, 40), sf::Color::Black);
 		write(window, "Best: " + std::to_string((int)(BestCarsVect[0].score * 3.14159)), sf::Vector3f(10, 50, 40), sf::Color::Black);
 		if (!CHANGEMAP) {
 			write(window, "Prev. best: " + std::to_string((int)(BestCar.score * 3.14159)), sf::Vector3f(10, 90, 40), sf::Color::Black); //don't display the true score because it's not precise enough when rounded
